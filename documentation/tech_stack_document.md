@@ -1,90 +1,127 @@
-# Tech Stack Document
+# Tech Stack Document for isp-management-suite
 
-This document explains the key technologies chosen for the **codeguide-starter** project. It’s written in everyday language so anyone—technical or not—can understand why each tool was picked and how it supports the application.
+This document explains the technology choices behind the **isp-management-suite**, a full-stack starter template designed for building an Integrated ISP Management System. It’s written in everyday language so everyone—from business stakeholders to non-technical team members—can understand why these tools were chosen and how they work together.
 
 ## 1. Frontend Technologies
-The frontend is everything the user sees and interacts with. For this project, we’ve used:
+
+Our frontend is responsible for everything users see and interact with. We picked tools that make the interface fast, flexible, and easy to maintain.
 
 - **Next.js (App Router)**
-  - A React framework that makes page routing, server-side rendering, and API routes very simple.
-  - Enhances user experience by pre-rendering pages on the server or at build time, leading to faster initial load.
-- **React 18**
-  - The underlying library for building user interfaces with reusable components.
-  - Provides a smooth, interactive experience thanks to its virtual DOM and modern hooks.
+  - Provides server-side rendering (SSR) and Server Components for fast page loads and efficient data fetching.
+  - Simplifies routing and code splitting, so users only download what they need.
+- **React**
+  - Powers our interactive UI components—forms, tables, charts, and more.
 - **TypeScript**
-  - A superset of JavaScript that adds types (labels for data).
-  - Helps catch errors early during development and makes the code easier to maintain.
-- **CSS (globals.css & theme.css)**
-  - **globals.css** applies base styles (fonts, colors, resets) across the entire app.
-  - **dashboard/theme.css** defines the look and feel specific to the dashboard area.
-  - This separation keeps styles organized and avoids accidental style conflicts.
+  - Adds type safety to catch errors early, reducing bugs in complex features like billing and provisioning.
+- **Tailwind CSS**
+  - A utility-first styling framework that lets us build responsive, consistent layouts without writing custom CSS from scratch.
+- **shadcn/ui**
+  - A library of accessible, copy-and-paste React components (buttons, dialogs, tables) that can be customized to match our brand.
+- **State Management (Zustand or Jotai)**
+  - Recommended for complex client-side state (e.g., real-time technician dashboard, map controls) without unnecessary re-renders.
 
-By combining these tools, we have a clear structure (Next.js folders for pages and layouts), safer code (TypeScript), and flexible styling with vanilla CSS.
+How these choices enhance UX:
+- Fast initial load and smooth navigation via SSR.
+- Consistent look and feel with minimal styling overhead.
+- Easily extendable components that non-designers can customize.
 
 ## 2. Backend Technologies
-The backend handles data, user accounts, and the logic behind the scenes. Our choices here are:
+
+The backend powers our data storage, business logic, and integrations with external systems.
 
 - **Next.js API Routes**
-  - Allows us to write server-side code (`route.ts` files) alongside our frontend in the same project.
-  - Runs on Node.js, so we can handle requests like sign-up, sign-in, and data fetching in one place.
-- **Node.js Runtime**
-  - The JavaScript environment on the server that executes our API routes.
-- **bcrypt** (npm package)
-  - A library for hashing passwords securely before storing them.
-  - Ensures that even if someone got access to our data, raw passwords aren’t visible.
-- **(Optional) NextAuth.js or JWT**
-  - While this starter kit shows a custom authentication flow, it can easily integrate services like NextAuth.js for email-based login or JWT (JSON Web Tokens) for stateless sessions.
+  - Serverless endpoints built into Next.js for handling requests (e.g., provisioning, billing webhooks, notifications).
+- **Better Auth**
+  - A flexible library for user authentication and role-based access control (RBAC), supporting roles like Admin, Finance, Technician, and Sales.
+- **Drizzle ORM**
+  - A modern, type-safe Object-Relational Mapper for PostgreSQL that makes database schema definitions and queries intuitive and reliable.
+- **PostgreSQL**
+  - A robust relational database to store customers, service packages, invoices, tickets, audit logs, and more.
+- **Zod**
+  - Used to validate all incoming data (forms, webhooks) to prevent bad data and enhance security.
+- **Service Modules (`/lib/services`)**
+  - Encapsulate external integration logic (MikroTik, payment gateways, notifications) to keep API routes clean and business logic reusable.
 
-These components work together to receive user credentials, verify or store them securely, manage sessions or tokens, and deliver protected data back to the frontend.
+These components work together by:
+1. Receiving requests through API Routes.
+2. Validating inputs with Zod.
+3. Applying business rules (authentication, data relationships).
+4. Reading/writing data via Drizzle ORM and PostgreSQL.
+5. Calling external services through dedicated service modules.
 
 ## 3. Infrastructure and Deployment
-Infrastructure covers where and how we host the app, as well as how changes get delivered:
 
+Our infrastructure choices ensure the app is reliable, scalable, and easy to deploy.
+
+- **Vercel**
+  - Hosts the Next.js app with zero-configuration deployment.
+  - Offers built-in Cron Jobs for scheduled tasks (automatic invoice generation, isolation checks).
+- **Docker & Docker Compose**
+  - Provide a consistent local environment for developers (app server + PostgreSQL) so “it works on my machine” becomes a thing of the past.
 - **Git & GitHub**
-  - Version control system (Git) and remote hosting (GitHub) keep track of all code changes and allow team collaboration.
-- **Vercel (or Netlify)**
-  - A popular hosting service optimized for Next.js, with one-click deployments and global content delivery.
-  - Automatically rebuilds and deploys the site whenever code is pushed to the main branch.
-- **GitHub Actions (CI/CD)**
-  - Automates tasks like linting (ESLint), formatting (Prettier), and running any tests you add.
-  - Ensures that only clean, tested code goes live.
+  - Version control and collaboration platform for code reviews, branching, and pull requests.
+- **CI/CD Pipeline**
+  - Vercel automatically builds and deploys every push to main or production branches.
+- **Environment Variables**
+  - Securely manage sensitive credentials (`DATABASE_URL`, `MIKROTIK_API_USER`, `PAYMENT_GATEWAY_SECRET`) in `.env` files and Vercel’s dashboard.
 
-Together, these tools provide a reliable, scalable setup where every code change is tested and deployed quickly, with minimal manual work.
+These choices give us:
+- **Reliability**: Automatic deployments, health checks, and rollbacks on Vercel.
+- **Scalability**: Serverless functions scale with traffic.
+- **Consistency**: Docker ensures all environments match exactly.
 
 ## 4. Third-Party Integrations
-While this starter kit is minimal by design, it already includes or can easily add:
 
-- **bcrypt**
-  - For secure password hashing (included as an npm dependency).
-- **NextAuth.js** (optional)
-  - A full-featured authentication library supporting email/password, OAuth, and more.
-- **Sentry or LogRocket** (optional)
-  - For real-time error tracking and performance monitoring in production.
+To support core ISP operations, we integrate with several external services:
 
-These integrations help extend the app’s capabilities without building every feature from scratch.
+- **MikroTik ROS 7 API**
+  - Automates PPPoE provisioning and profile changes (e.g., isolating or restoring customers).
+- **Payment Gateways (Xendit, Midtrans)**
+  - Handle payment collection, virtual account creation, and webhook notifications for invoice status.
+- **Messaging Platforms (WhatsApp, Telegram)**
+  - Send payment reminders and status updates directly to customers’ phones.
+
+All integration logic lives in `/lib/services`, ensuring:
+- Clean, reusable code that’s easy to test and maintain.
+- Clear separation between business rules and external API details.
 
 ## 5. Security and Performance Considerations
-We’ve baked in several measures to keep users safe and the app running smoothly:
+
+We’ve built security and performance measures into every layer:
 
 Security:
-- Passwords are never stored in plain text—bcrypt hashes them with a random salt.
-- API routes can implement CSRF protection and input validation to block malicious requests.
-- Session tokens or cookies are marked secure and HttpOnly to prevent theft via JavaScript.
+- **Authentication & RBAC** with Better Auth to protect API routes and UI pages.
+- **Input Validation** using Zod on all incoming data.
+- **Environment Variables** for secrets—never hard-coded.
+- **Secure Webhooks**: Verify payment gateway signatures before processing.
 
 Performance:
-- Server-side rendering (SSR) and static site generation (SSG) in Next.js deliver pages faster.
-- Code splitting and lazy-loaded components ensure users only download what they need.
-- Global CSS and theme files are small and cached by the browser for quick repeat visits.
+- **Server Components & SSR** in Next.js for fast, SEO-friendly pages.
+- **Tailwind CSS**’s small runtime footprint and efficient styles.
+- **Drizzle ORM**’s optimized queries and type safety to reduce runtime errors.
+- **Vercel Cron Jobs** offload scheduled tasks from main request path.
 
-These strategies work together to give users a fast, secure experience every time.
+Monitoring & Logging (Recommended):
+- **Sentry or Logtail** for centralized error tracking.
+- **Audit Logs** table to record critical actions (invoice creation, profile changes).
+
+Testing (Recommended):
+- **Unit Tests** with Vitest or Jest for business logic.
+- **Integration Tests** against the database.
+- **End-to-End Tests** with Playwright or Cypress to simulate key user flows.
 
 ## 6. Conclusion and Overall Tech Stack Summary
-In building **codeguide-starter**, we chose technologies that:
 
-- Align with modern web standards (Next.js, React, TypeScript).
-- Provide a clear, file-based project structure for rapid onboarding.
-- Offer built-in support for server-side rendering, API routes, and static assets.
-- Emphasize security through password hashing, session management, and safe defaults.
-- Enable easy scaling and future enhancements via modular code and optional integrations.
+Our tech stack is carefully chosen to meet the goals of the Integrated ISP Management System:
 
-This stack strikes a balance between simplicity for newcomers and flexibility for experienced teams. It accelerates development of a secure authentication flow and a polished dashboard, while leaving room to plug in databases, test suites, and advanced features as the project grows.
+- **Rapid Development**: Next.js, Tailwind CSS, shadcn/ui, and Drizzle ORM accelerate building core features.
+- **Type Safety & Reliability**: TypeScript, Zod, and Drizzle ORM prevent bugs in critical billing and provisioning logic.
+- **Scalability & Maintenance**: Vercel’s serverless functions, Docker-based environments, and clean service modules make the app easy to grow and manage.
+- **Security & Compliance**: Better Auth, secure webhooks, and environment variables keep customer data and operations safe.
+
+Unique Aspects:
+- **Modular Service Layer**: Keeps external API logic isolated, promoting testability and reusability.
+- **Copy-and-Paste UI Components**: shadcn/ui lets non-designers customize the look and feel without heavy frontend work.
+- **Server-Side Cron Jobs**: Built-in scheduling via Vercel ensures critical background tasks run reliably.
+
+With this foundation, your team can focus on extending the starter template—adding modules for CRM, billing automation, support ticketing, and more—while trusting that the core architecture is solid, secure, and designed for growth.
