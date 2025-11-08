@@ -1,179 +1,214 @@
-# Backend Structure Document
+# ISP Management Suite - Backend Structure Document
 
-This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
+This document outlines the backend architecture, database design, APIs, hosting, infrastructure, security, and maintenance strategies for the Integrated ISP Management System. It’s written in everyday language so stakeholders and team members can understand how everything works together.
 
 ## 1. Backend Architecture
 
-- **Framework and Design Pattern**
-  - We use **Next.js API Routes** to handle all server-side logic. These routes live alongside the frontend code in the same repository, making development and deployment simpler.
-  - The backend follows a **layered pattern**:
-    1. **API Layer**: Receives requests (login, registration, data fetch).  
-    2. **Service Layer**: Contains the core business logic (user validation, password hashing).  
-    3. **Data Access Layer**: Talks to the database via a simple ORM (e.g., Prisma or TypeORM).
+### Overall Design
+- The backend is built on Next.js API Routes. These are server-side functions that respond to HTTP requests, acting as the core integration layer.
+- We use a **service layer pattern**: all external calls (MikroTik router, payment gateway, notifications) are encapsulated in separate service modules. This keeps the code clean and easy to extend.
+- **Drizzle ORM** is our tool for talking to the database in a type-safe way. It prevents common errors by matching your code to your database tables.
+- **Better Auth** handles user sign-up, sign-in, sessions, and role-based access control (RBAC).
 
-- **Scalability**
-  - Stateless API routes can scale horizontally—new instances can spin up on demand.  
-  - We can add caching or a message queue (e.g., Redis or RabbitMQ) without changing the core code.
-
-- **Maintainability**
-  - Code for each feature is grouped by route (authentication, dashboard).  
-  - A service layer separates complex logic from request handling.
-
-- **Performance**
-  - Lightweight Node.js handlers keep response times low.  
-  - Future use of database connection pooling and Redis for caching repeated queries.
+### Scalability, Maintainability, Performance
+- **Scalability**: Serverless functions on Vercel scale automatically based on traffic. Docker Compose ensures consistent development environments.
+- **Maintainability**: Clear separation between API routes, service modules, and database schemas makes the codebase easy to navigate and modify.
+- **Performance**: Next.js server-side rendering and edge caching deliver fast responses. Drizzle ORM queries are optimized and type-checked at compile time.
 
 ## 2. Database Management
 
-- **Database Choice**
-  - We recommend **PostgreSQL** for structured data and reliable transactions.  
-  - In-memory caching can be added later with **Redis** for session tokens or frequently read data.
+### Technologies
+- Type: Relational (SQL)
+- System: PostgreSQL
+- ORM: Drizzle ORM (type-safe, schema-driven)
 
-- **Data Storage and Access**
-  - Use an ORM like **Prisma** or **TypeORM** to map JavaScript/TypeScript objects to database tables.
-  - Connection pooling ensures efficient use of database connections under load.
-  - Migrations track schema changes over time, keeping development, staging, and production in sync.
-
-- **Data Practices**
-  - Passwords are never stored in plain text—they are salted and hashed with **bcrypt** before saving.
-  - All outgoing data is typed and validated to prevent malformed records.
+### Data Structure and Access
+- Data is organized into tables representing users, roles, customers, service packages, invoices, support tickets, leads, and audit logs.
+- Drizzle ORM maps these tables to TypeScript models, ensuring queries and updates match the intended schema.
+- Environment variables securely store the database connection string (`DATABASE_URL`).
+- Database migrations keep the schema in sync across development and production.
 
 ## 3. Database Schema
+Below is a human-readable overview of the main tables, followed by sample SQL definitions.
 
-### Human-Readable Format
+### Main Tables (Human-Readable)
+- **users**: Stores user accounts with email, password hash, and linked role.
+- **roles**: Defines roles such as Admin, Finance, Technician, Sales.
+- **customers**: Records customer details (name, address, contact information).
+- **service_packages**: Lists available ISP packages (speed, price).
+- **invoices**: Tracks billing records, amounts, due dates, payment status.
+- **support_tickets**: Logs customer support requests and their status.
+- **leads**: Captures potential customer inquiries for sales follow-up.
+- **audit_logs**: Records critical actions (invoice creation, service suspension) with timestamps and user IDs.
 
-- **Users**
-  - **id**: Unique identifier  
-  - **email**: User’s email address (unique)  
-  - **password_hash**: Securely hashed password  
-  - **created_at**: Account creation timestamp
-
-- **Sessions**
-  - **id**: Unique session record  
-  - **user_id**: Links to a user  
-  - **token**: Random string for authentication  
-  - **expires_at**: When the token stops working  
-  - **created_at**: When the session was created
-
-- **DashboardItems** *(optional for dynamic data)*
-  - **id**: Unique record  
-  - **title**: Item title  
-  - **content**: Item details  
-  - **created_at**: When the item was added
-
-### SQL Schema (PostgreSQL)
+### Sample SQL Schema (PostgreSQL)
 ```sql
--- Users table
+CREATE TABLE roles (
+  id SERIAL PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL
+);
+
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role_id INTEGER REFERENCES roles(id),
+  created_at TIMESTAMP DEFAULT now()
 );
 
--- Sessions table
-CREATE TABLE sessions (
+CREATE TABLE customers (
   id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id) ON DELETE CASCADE,
-  token VARCHAR(255) UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  name TEXT NOT NULL,
+  address TEXT,
+  phone TEXT,
+  email TEXT,
+  pppoe_username TEXT,
+  created_at TIMESTAMP DEFAULT now()
 );
 
--- Dashboard items table
-CREATE TABLE dashboard_items (
+CREATE TABLE service_packages (
   id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  content TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  name TEXT NOT NULL,
+  download_speed INTEGER,
+  upload_speed INTEGER,
+  price NUMERIC(10,2) NOT NULL
+);
+
+CREATE TABLE invoices (
+  id SERIAL PRIMARY KEY,
+  customer_id INTEGER REFERENCES customers(id),
+  package_id INTEGER REFERENCES service_packages(id),
+  amount NUMERIC(10,2) NOT NULL,
+  due_date DATE NOT NULL,
+  status TEXT CHECK (status IN ('pending','paid','overdue')),
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE support_tickets (
+  id SERIAL PRIMARY KEY,
+  customer_id INTEGER REFERENCES customers(id),
+  subject TEXT NOT NULL,
+  description TEXT,
+  status TEXT CHECK (status IN ('open','in_progress','closed')),
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE leads (
+  id SERIAL PRIMARY KEY,
+  name TEXT,
+  contact TEXT,
+  source TEXT,    -- e.g., website, referral
+  status TEXT CHECK (status IN ('new','contacted','converted')),
+  created_at TIMESTAMP DEFAULT now()
+);
+
+CREATE TABLE audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  action TEXT NOT NULL,
+  details JSONB,
+  created_at TIMESTAMP DEFAULT now()
 );
 ```  
 
 ## 4. API Design and Endpoints
 
-- **Approach**: We follow a **RESTful** style, grouping related endpoints under `/api` directories.
+### Design Approach
+- We follow a RESTful pattern using Next.js API Routes.
+- Each route hands off business logic to a service module.
+- Input validation with Zod ensures only well-formed data reaches the database or external APIs.
 
-- **Key Endpoints**
-  - `POST /api/auth/register`  
-    • Accepts `{ email, password }`  
-    • Creates a new user and issues a session token  
-  - `POST /api/auth/login`  
-    • Accepts `{ email, password }`  
-    • Verifies credentials and returns a session token  
-  - `POST /api/auth/logout`  
-    • Invalidates the session token on the server  
-  - `GET /api/dashboard/data`  
-    • Requires a valid session  
-    • Returns user-specific data or dashboard items  
+### Key Endpoints
+- **Authentication**
+  - `POST /api/auth/signup`: Create a new user.
+  - `POST /api/auth/signin`: Log in.
+  - `GET /api/auth/session`: Check current session.
 
-- **Communication**
-  - Frontend sends JSON requests; backend replies with JSON and appropriate HTTP status codes.  
-  - Protected routes check for a valid session token (in cookies or Authorization header).
+- **Customers**
+  - `GET /api/customers`: List all customers.
+  - `POST /api/customers`: Create a customer.
+  - `PUT /api/customers/[id]`: Update customer details.
+  - `DELETE /api/customers/[id]`: Remove a customer.
+
+- **Invoices & Billing**
+  - `GET /api/billing/invoices`: Fetch invoices.
+  - `POST /api/billing/invoices`: Generate a new invoice.
+  - `POST /api/billing/check-due-invoices`: (Cron job) Identify and process overdue invoices.
+
+- **MikroTik Integration**
+  - `POST /api/mikrotik/provision`: Add or update a PPPoE secret.
+  - `POST /api/mikrotik/isolate`: Change a customer’s profile to isolated.
+
+- **Payment Webhooks**
+  - `POST /api/payment/webhook`: Receive payment status updates from the gateway.
+
+- **Support Tickets**
+  - `GET /api/tickets`: List tickets.
+  - `POST /api/tickets`: Create a new ticket.
+  - `PUT /api/tickets/[id]`: Update ticket status or details.
+
+- **Notifications**
+  - Invoked internally by services; not exposed publicly. Sends WhatsApp or Telegram updates.
 
 ## 5. Hosting Solutions
 
-- **Cloud Provider**:  
-  - **Vercel** (recommended) offers seamless Next.js deployments, auto-scaling, and built-in CDN.  
-  - Alternatively, **Netlify** or any Node.js-capable host will work.
+### Production Environment
+- **Vercel** (serverless functions)
+  - Automatic scaling based on demand.
+  - Built-in cron jobs to schedule tasks like invoice checks.
+  - Global CDN for fast static asset delivery.
 
-- **Benefits**
-  - **Reliability**: Global servers and failover across regions.  
-  - **Scalability**: Auto-scale serverless functions based on traffic.  
-  - **Cost-Effectiveness**: Pay-per-use model means low cost for small projects.
+### Development Environment
+- **Docker & Docker Compose**
+  - Spin up the Next.js app and PostgreSQL locally.
+  - Ensures every developer works in an identical setup.
+
+### Benefits
+- **Reliability**: Vercel’s SLA and automatic rollbacks.
+- **Cost-effectiveness**: Pay-per-use model for serverless functions.
+- **Speed**: Instant deployments from Git pushes.
 
 ## 6. Infrastructure Components
 
-- **Load Balancer**
-  - Provided by the hosting platform—distributes API requests across function instances.
-
-- **CDN (Content Delivery Network)**
-  - Vercel’s global edge network caches static assets (CSS, JS, images) for faster page loads.
-
+- **Load Balancer & Edge Network**: Implicitly handled by Vercel’s global edge network.
 - **Caching**
-  - **Redis** (optional) for session storage or caching dashboard queries to reduce database load.
-
-- **Object Storage**
-  - For file uploads or backups, integrate with AWS S3 or similar services.
-
-- **Message Queue**
-  - In future, use **RabbitMQ** or **Kafka** for background tasks (e.g., email notifications).
+  - Edge caching for static content and SSR pages.
+  - In-memory caching (optional) in service modules for repeated external calls.
+- **Content Delivery Network (CDN)**
+  - Vercel’s built-in CDN speeds up asset delivery to end users worldwide.
+- **Cron Jobs**
+  - Vercel Cron feature to trigger scheduled endpoints (e.g., billing checks).
 
 ## 7. Security Measures
 
 - **Authentication & Authorization**
-  - Passwords hashed with **bcrypt** and salted.  
-  - Session tokens stored in secure, HttpOnly cookies or Authorization headers.  
-  - Protected endpoints verify tokens before proceeding.
-
+  - Better Auth with session cookies and JSON Web Tokens (JWT).
+  - Role-Based Access Control (Admin, Finance, Technician, Sales).
 - **Data Encryption**
-  - **HTTPS/TLS** encrypts data in transit.  
-  - Database connections use SSL to encrypt data between the app and the database.
-
+  - TLS for all data in transit.
+  - Database credentials and API secrets stored in environment variables.
 - **Input Validation**
-  - Every incoming request is validated (e.g., valid email format, password length) to prevent SQL injection or other attacks.
-
-- **Web Security Best Practices**
-  - Enable **CORS** policies to limit allowed origins.  
-  - Use **CSRF tokens** or same-site cookies to prevent cross-site requests.  
-  - Set secure headers with **Helmet** or a similar middleware.
+  - Zod schemas validate every incoming request before processing.
+- **Audit Logging**
+  - All critical actions recorded in `audit_logs` for traceability.
+- **Secure Secrets Management**
+  - Environment variables managed by Vercel and `.env` files locally (excluded from source control).
 
 ## 8. Monitoring and Maintenance
 
+- **Error Tracking**
+  - Sentry or Logtail integrated into API routes and service modules.
 - **Performance Monitoring**
-  - Integrate **Sentry** or **LogRocket** for real-time crash reporting and performance tracing.  
-  - Use Vercel’s built-in analytics to track request latencies and error rates.
-
+  - Vercel analytics for function latency and throughput.
+  - Database monitoring (e.g., pgAdmin, Datadog) for query performance.
 - **Logging**
-  - Structured logs (JSON) for all API requests and errors, shipped to a log management service like **Datadog** or **Logflare**.
-
-- **Health Checks**
-  - Define a `/health` endpoint that returns a 200 status if the service is up and the database is reachable.
-
-- **Maintenance Strategies**
-  - Automated migrations run on deploy to keep the database schema up to date.  
-  - Scheduled dependency audits and security scans (e.g., `npm audit`).
-  - Regular backups of the database (daily or weekly depending on usage).
+  - Centralized logs for serverless functions.
+  - Structured logs (JSON) for easier searching and alerting.
+- **Maintenance Practices**
+  - Regular dependency updates and security patching.
+  - Scheduled backups of PostgreSQL.
+  - Automated migration scripts ensure the schema evolves safely.
 
 ## 9. Conclusion and Overall Backend Summary
 
-The backend for **codeguide-starter** is built on Next.js API Routes and Node.js, paired with PostgreSQL for data and optional Redis for caching. It follows a clear layered architecture that keeps code easy to maintain and extend. With RESTful endpoints for authentication and data, secure practices like password hashing and HTTPS, and hosting on Vercel for scalability and global performance, this setup meets the project’s goals for a fast, secure, and developer-friendly foundation. Future enhancements—such as background job queues, advanced monitoring, or richer data models—can be added without disrupting the core structure.
+The backend of the ISP Management Suite is a robust, scalable, and secure foundation for managing customers, billing, network provisioning, and support. By combining Next.js API Routes, Drizzle ORM, Better Auth, and PostgreSQL, we achieve a maintainable codebase that can grow with your business. Vercel hosting and Docker-based development ensure reliable deployments and a consistent developer experience. The clear separation of concerns—API routes, services, and database schemas—makes future enhancements straightforward, helping you deliver a full-featured ISP management system quickly and safely.
